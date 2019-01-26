@@ -95,6 +95,9 @@ Node::Node(
   trajectory_node_list_publisher_ =
       node_handle_.advertise<::visualization_msgs::MarkerArray>(
           kTrajectoryNodeListTopic, kLatestOnlyPublisherQueueSize);
+  path_publisher_ =
+      node_handle_.advertise<::nav_msgs::Path>(
+          kPathTopic, kLatestOnlyPublisherQueueSize);
   landmark_poses_list_publisher_ =
       node_handle_.advertise<::visualization_msgs::MarkerArray>(
           kLandmarkPosesListTopic, kLatestOnlyPublisherQueueSize);
@@ -123,6 +126,9 @@ Node::Node(
   wall_timers_.push_back(node_handle_.createWallTimer(
       ::ros::WallDuration(node_options_.trajectory_publish_period_sec),
       &Node::PublishTrajectoryNodeList, this));
+  wall_timers_.push_back(node_handle_.createWallTimer(
+      ::ros::WallDuration(node_options_.trajectory_publish_period_sec),
+      &Node::PublishPath, this));
   wall_timers_.push_back(node_handle_.createWallTimer(
       ::ros::WallDuration(node_options_.trajectory_publish_period_sec),
       &Node::PublishLandmarkPosesList, this));
@@ -266,6 +272,15 @@ void Node::PublishTrajectoryNodeList(
     carto::common::MutexLocker lock(&mutex_);
     trajectory_node_list_publisher_.publish(
         map_builder_bridge_.GetTrajectoryNodeList());
+  }
+}
+
+void Node::PublishPath(
+    const ::ros::WallTimerEvent& unused_timer_event) {
+  if (path_publisher_.getNumSubscribers() > 0) {
+    carto::common::MutexLocker lock(&mutex_);
+    path_publisher_.publish(
+        map_builder_bridge_.GetPath());
   }
 }
 

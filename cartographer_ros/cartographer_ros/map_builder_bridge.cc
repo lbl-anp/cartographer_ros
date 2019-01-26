@@ -23,6 +23,7 @@
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
+#include "cartographer_ros/time_conversion.h"
 
 namespace cartographer_ros {
 namespace {
@@ -348,6 +349,24 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
     }
   }
   return trajectory_node_list;
+}
+
+nav_msgs::Path MapBuilderBridge::GetPath() {
+  nav_msgs::Path path;
+  path.header.stamp = ::ros::Time::now();
+  path.header.frame_id = node_options_.map_frame;
+  const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodes();
+  for (const int trajectory_id : node_poses.trajectory_ids()) {
+    for (const auto& node_id_data : node_poses.trajectory(trajectory_id)) {
+      ::geometry_msgs::PoseStamped node_pose_stamp;
+      node_pose_stamp.pose = ToGeometryMsgPose(node_id_data.data.global_pose);
+      node_pose_stamp.header.stamp = ToRos(node_id_data.data.time());
+      node_pose_stamp.header.frame_id = "cartographer_trajectory_" +
+          ::std::to_string(trajectory_id);
+      path.poses.push_back(node_pose_stamp);
+    }
+  }
+  return path;
 }
 
 visualization_msgs::MarkerArray MapBuilderBridge::GetLandmarkPosesList() {
