@@ -99,7 +99,7 @@ void PushAndResetLineMarker(visualization_msgs::Marker* marker,
 }
 
 sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
-  const cartographer::mapping_3d::proto::HybridGrid& hybrid_grid,
+   const cartographer::mapping::proto::HybridGrid& hybrid_grid,
   double min_probability,
   Eigen::Transform<float,3,Eigen::Affine> transform) {
     ROS_DEBUG("Hybrid grid size %d", hybrid_grid.values_size());
@@ -218,7 +218,7 @@ bool MapBuilderBridge::SerializeState(const std::string& filename) {
 bool MapBuilderBridge::HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response){
-  auto submapDataMap = map_builder_.pose_graph()->GetAllSubmapData();
+  auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
   cartographer::mapping::SubmapId submap_id{request.trajectory_id,
                                             request.submap_index};
   if(submapDataMap.Contains(submap_id)) {
@@ -227,7 +227,7 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
     ::cartographer::mapping::proto::Submap protoSubmap;
     ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
 
-    submapData.submap->ToProto(protoSubmapPtr);
+    submapData.submap->ToProto(protoSubmapPtr, false);  // TODO do we want to include_probability_grid_data
     const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
     const auto& hybrid_grid = request.high_resolution ?
                   submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
