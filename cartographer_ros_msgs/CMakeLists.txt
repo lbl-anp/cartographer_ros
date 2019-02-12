@@ -19,6 +19,7 @@ project(cartographer_ros_msgs)
 set(PACKAGE_DEPENDENCIES
   geometry_msgs
   std_msgs
+  sensor_msgs
 )
 
 find_package(catkin REQUIRED COMPONENTS message_generation ${PACKAGE_DEPENDENCIES})
@@ -39,6 +40,7 @@ add_message_files(
 add_service_files(
   FILES
     SubmapQuery.srv
+    SubmapCloudQuery.srv
     FinishTrajectory.srv
     StartTrajectory.srv
     WriteState.srv

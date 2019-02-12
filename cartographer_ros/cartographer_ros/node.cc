@@ -112,6 +112,8 @@ Node::Node(
       kFinishTrajectoryServiceName, &Node::HandleFinishTrajectory, this));
   service_servers_.push_back(node_handle_.advertiseService(
       kWriteStateServiceName, &Node::HandleWriteState, this));
+  service_servers_.push_back(node_handle_.advertiseService(
+      kSubmapCloudQueryServiceName, &Node::HandleSubmapCloudQuery, this));
 
   scan_matched_point_cloud_publisher_ =
       node_handle_.advertise<sensor_msgs::PointCloud2>(
@@ -147,6 +149,13 @@ bool Node::HandleSubmapQuery(
   carto::common::MutexLocker lock(&mutex_);
   map_builder_bridge_.HandleSubmapQuery(request, response);
   return true;
+}
+
+bool Node::HandleSubmapCloudQuery(
+    ::cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+    ::cartographer_ros_msgs::SubmapCloudQuery::Response& response) {
+  carto::common::MutexLocker lock(&mutex_);
+  return map_builder_bridge_.HandleSubmapCloudQuery(request, response);
 }
 
 void Node::PublishSubmapList(const ::ros::WallTimerEvent& unused_timer_event) {
@@ -291,6 +300,10 @@ void Node::PublishLandmarkPosesList(
     landmark_poses_list_publisher_.publish(
         map_builder_bridge_.GetLandmarkPosesList());
   }
+}
+
+void PublishFirstSubmapMarkers(const ::ros::WallTimerEvent& timer_event){
+
 }
 
 void Node::PublishConstraintList(

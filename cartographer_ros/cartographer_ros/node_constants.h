@@ -41,6 +41,7 @@ constexpr char kTrajectoryNodeListTopic[] = "trajectory_node_list";
 constexpr char kPathTopic[] = "path";
 constexpr char kLandmarkPosesListTopic[] = "landmark_poses_list";
 constexpr char kConstraintListTopic[] = "constraint_list";
+constexpr char kSubmapCloudQueryServiceName[] = "submap_cloud_query";
 constexpr double kConstraintPublishPeriodSec = 0.5;
 
 constexpr int kInfiniteSubscriberQueueSize = 0;

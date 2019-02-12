@@ -41,6 +41,7 @@
 #include "cartographer_ros_msgs/SubmapQuery.h"
 #include "cartographer_ros_msgs/TrajectoryOptions.h"
 #include "cartographer_ros_msgs/WriteState.h"
+#include "cartographer_ros_msgs/SubmapCloudQuery.h"
 #include "nav_msgs/Odometry.h"
 #include "nav_msgs/Path.h"
 #include "ros/ros.h"
@@ -139,6 +140,10 @@ class Node {
       cartographer_ros_msgs::FinishTrajectory::Response& response);
   bool HandleWriteState(cartographer_ros_msgs::WriteState::Request& request,
                         cartographer_ros_msgs::WriteState::Response& response);
+  bool HandleSubmapCloudQuery(
+      cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+      cartographer_ros_msgs::SubmapCloudQuery::Response& response);
+
   // Returns the set of SensorIds expected for a trajectory.
   // 'SensorId::id' is the expected ROS topic name.
   std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>
