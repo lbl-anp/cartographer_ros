@@ -218,14 +218,14 @@ bool MapBuilderBridge::SerializeState(const std::string& filename) {
   return writer.Close();
 }
 
-// TODO@jccurtis change to void (like HandleSubmapQuery)
 void MapBuilderBridge::HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response){
-  LOG(WARNING) << "received request!";
+  LOG(INFO) << "received request: trajectory_id=" << request.trajectory_id
+    << " submap_index=" << request.submap_index
+    << " high_resolution=" << (request.high_resolution ? "true" : "false");
   // Mapping of all submap data
   auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
-  LOG(WARNING) << "loaded submapDataMap!";
   // Get submap by trajectory_id and submap_index
   cartographer::mapping::SubmapId submap_id{request.trajectory_id,
                                             request.submap_index};
@@ -265,6 +265,9 @@ void MapBuilderBridge::HandleSubmapCloudQuery(
   response.submap_version = 0;  // TODO@jccurtis add submap_version field?
   response.finished = submap3d.finished();
   response.resolution = hybrid_grid.resolution();
+  LOG(INFO) << "done building response: trajectory_id=" << request.trajectory_id
+    << " submap_index=" << request.submap_index
+    << " high_resolution=" << (request.high_resolution ? "true" : "false");
 }
 
 void MapBuilderBridge::HandleSubmapQuery(
