@@ -244,7 +244,7 @@ void MapBuilderBridge::HandleSubmapCloudQuery(
   ::cartographer::mapping::proto::Submap protoSubmap;
   ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
 
-  submapData.submap->ToProto(protoSubmapPtr, false);  // TODO do we want to include_probability_grid_data
+  submapData.submap->ToProto(protoSubmapPtr, true);  // TODO do we want to include_probability_grid_data
   const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
   const auto& hybrid_grid = request.high_resolution ?
                 submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
