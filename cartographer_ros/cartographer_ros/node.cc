@@ -155,7 +155,8 @@ bool Node::HandleSubmapCloudQuery(
     ::cartographer_ros_msgs::SubmapCloudQuery::Request& request,
     ::cartographer_ros_msgs::SubmapCloudQuery::Response& response) {
   carto::common::MutexLocker lock(&mutex_);
-  return map_builder_bridge_.HandleSubmapCloudQuery(request, response);
+  map_builder_bridge_.HandleSubmapCloudQuery(request, response);
+  return true;
 }
 
 void Node::PublishSubmapList(const ::ros::WallTimerEvent& unused_timer_event) {

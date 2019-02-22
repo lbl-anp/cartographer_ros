@@ -219,7 +219,7 @@ bool MapBuilderBridge::SerializeState(const std::string& filename) {
 }
 
 // TODO@jccurtis change to void (like HandleSubmapQuery)
-bool MapBuilderBridge::HandleSubmapCloudQuery(
+void MapBuilderBridge::HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response){
   LOG(WARNING) << "received request!";
@@ -229,35 +229,7 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
   // Get submap by trajectory_id and submap_index
   cartographer::mapping::SubmapId submap_id{request.trajectory_id,
                                             request.submap_index};
-  if(submapDataMap.Contains(submap_id)) {
-    const ::cartographer::mapping::PoseGraph::SubmapData& submapData
-          = submapDataMap.at(submap_id);
-    ::cartographer::mapping::proto::Submap protoSubmap;
-    ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
-
-    submapData.submap->ToProto(protoSubmapPtr, false);  // TODO do we want to include_probability_grid_data
-    const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
-    const auto& hybrid_grid = request.high_resolution ?
-                  submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
-    Eigen::Transform<float,3,Eigen::Affine> transform =
-              Eigen::Translation3f(submapData.pose.translation().x(),
-                                   submapData.pose.translation().y(),
-                                   submapData.pose.translation().z())
-                                   * Eigen::Quaternion<float>(
-                          submapData.pose.rotation().w(), submapData.pose.rotation().x(),
-                          submapData.pose.rotation().y(), submapData.pose.rotation().z());
-    auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
-    cloud.header.frame_id = node_options_.map_frame;
-    cloud.header.stamp = ros::Time::now();
-
-    response.cloud = cloud;
-    response.status.message = "Success.";
-    response.status.code = cartographer_ros_msgs::StatusCode::OK;
-    response.submap_version = 0;  // TODO@jccurtis add submap_version field?
-    response.finished = submap3d.finished();
-    response.resolution = hybrid_grid.resolution();
-    return true;
-  } else {
+  if(!submapDataMap.Contains(submap_id)) {
     std::ostringstream errorstream;
     errorstream << "Cannot find submap: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
     const std::string error = errorstream.str();
@@ -265,8 +237,34 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
     response.status.code = cartographer_ros_msgs::StatusCode::NOT_FOUND;
     response.status.message = error;
     LOG(WARNING) << "Built empty response!";
-    return false;
+    return;
   }
+  const ::cartographer::mapping::PoseGraph::SubmapData& submapData
+        = submapDataMap.at(submap_id);
+  ::cartographer::mapping::proto::Submap protoSubmap;
+  ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
+
+  submapData.submap->ToProto(protoSubmapPtr, false);  // TODO do we want to include_probability_grid_data
+  const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
+  const auto& hybrid_grid = request.high_resolution ?
+                submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
+  Eigen::Transform<float,3,Eigen::Affine> transform =
+            Eigen::Translation3f(submapData.pose.translation().x(),
+                                 submapData.pose.translation().y(),
+                                 submapData.pose.translation().z())
+                                 * Eigen::Quaternion<float>(
+                        submapData.pose.rotation().w(), submapData.pose.rotation().x(),
+                        submapData.pose.rotation().y(), submapData.pose.rotation().z());
+  auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
+  cloud.header.frame_id = node_options_.map_frame;
+  cloud.header.stamp = ros::Time::now();
+
+  response.cloud = cloud;
+  response.status.message = "Success.";
+  response.status.code = cartographer_ros_msgs::StatusCode::OK;
+  response.submap_version = 0;  // TODO@jccurtis add submap_version field?
+  response.finished = submap3d.finished();
+  response.resolution = hybrid_grid.resolution();
 }
 
 void MapBuilderBridge::HandleSubmapQuery(
