@@ -99,7 +99,7 @@ void PushAndResetLineMarker(visualization_msgs::Marker* marker,
 }
 
 sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
-   const cartographer::mapping::proto::HybridGrid& hybrid_grid,
+  const cartographer::mapping::proto::HybridGrid& hybrid_grid,
   double min_probability,
   Eigen::Transform<float,3,Eigen::Affine> transform) {
     ROS_DEBUG("Hybrid grid size %d", hybrid_grid.values_size());
@@ -218,10 +218,15 @@ bool MapBuilderBridge::SerializeState(const std::string& filename) {
   return writer.Close();
 }
 
+// TODO@jccurtis change to void (like HandleSubmapQuery)
 bool MapBuilderBridge::HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response){
+  LOG(WARNING) << "received request!";
+  // Mapping of all submap data
   auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
+  LOG(WARNING) << "loaded submapDataMap!";
+  // Get submap by trajectory_id and submap_index
   cartographer::mapping::SubmapId submap_id{request.trajectory_id,
                                             request.submap_index};
   if(submapDataMap.Contains(submap_id)) {
@@ -246,12 +251,22 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
     cloud.header.stamp = ros::Time::now();
 
     response.cloud = cloud;
-    response.submap_version = submap3d.num_range_data();
+    response.status.message = "Success.";
+    response.status.code = cartographer_ros_msgs::StatusCode::OK;
+    response.submap_version = 0;  // TODO@jccurtis add submap_version field?
     response.finished = submap3d.finished();
     response.resolution = hybrid_grid.resolution();
     return true;
+  } else {
+    std::ostringstream errorstream;
+    errorstream << "Cannot find submap: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
+    const std::string error = errorstream.str();
+    LOG(WARNING) << error;
+    response.status.code = cartographer_ros_msgs::StatusCode::NOT_FOUND;
+    response.status.message = error;
+    LOG(WARNING) << "Built empty response!";
+    return false;
   }
-  return false;
 }
 
 void MapBuilderBridge::HandleSubmapQuery(
