@@ -244,10 +244,26 @@ void MapBuilderBridge::HandleSubmapCloudQuery(
   ::cartographer::mapping::proto::Submap protoSubmap;
   ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
 
-  submapData.submap->ToProto(protoSubmapPtr, true);  // TODO do we want to include_probability_grid_data
+  submapData.submap->ToProto(protoSubmapPtr, true);  // TODO@jccurtis do we want to include_probability_grid_data
   const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
+  // Check if submap is finished.
+  // TODO@jccurtis remove verbose logging
+  if(request.require_finished) {
+    if(!submap3d.finished()) {
+      std::ostringstream errorstream;
+      errorstream << "Submap not finished and require_finished==true: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
+      const std::string error = errorstream.str();
+      LOG(WARNING) << error;
+      response.finished = false;
+      response.status.code = cartographer_ros_msgs::StatusCode::UNAVAILABLE;
+      response.status.message = error;
+      LOG(WARNING) << "Built empty response!";
+      return;
+    }
+  }
   const auto& hybrid_grid = request.high_resolution ?
                 submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
+  // TODO@jccurtis make this transform a service option
   Eigen::Transform<float,3,Eigen::Affine> transform =
             Eigen::Translation3f(submapData.pose.translation().x(),
                                  submapData.pose.translation().y(),
