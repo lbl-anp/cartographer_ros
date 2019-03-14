@@ -628,6 +628,15 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
   return constraint_list;
 }
 
+cartographer_ros_msgs::WorkerStatus MapBuilderBridge::GetWorkerStatus() {
+  cartographer_ros_msgs::WorkerStatus worker_status;
+  worker_status.header.stamp = ::ros::Time::now();
+  worker_status.header.frame_id = node_options_.map_frame;
+  worker_status.num_remaining_items =
+    map_builder_->pose_graph()->GetWorkQueueSize();
+  return worker_status;
+}
+
 SensorBridge* MapBuilderBridge::sensor_bridge(const int trajectory_id) {
   return sensor_bridges_.at(trajectory_id).get();
 }

@@ -32,6 +32,7 @@
 #include "cartographer_ros/trajectory_options.h"
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapList.h"
+#include "cartographer_ros_msgs/WorkerStatus.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
 #include "cartographer_ros_msgs/SubmapCloudQuery.h"
 #include "nav_msgs/OccupancyGrid.h"
@@ -95,6 +96,7 @@ class MapBuilderBridge {
   visualization_msgs::MarkerArray GetTrajectoryNodeList();
   visualization_msgs::MarkerArray GetLandmarkPosesList();
   visualization_msgs::MarkerArray GetConstraintList();
+  cartographer_ros_msgs::WorkerStatus GetWorkerStatus();
   pcl::PointCloud<pcl::PointXYZ>::Ptr GetFirstSubmapAsPoints();
 
   nav_msgs::Path GetPath();

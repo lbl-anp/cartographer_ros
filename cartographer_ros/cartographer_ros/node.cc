@@ -104,6 +104,9 @@ Node::Node(
   constraint_list_publisher_ =
       node_handle_.advertise<::visualization_msgs::MarkerArray>(
           kConstraintListTopic, kLatestOnlyPublisherQueueSize);
+  worker_status_publisher_ =
+      node_handle_.advertise<::cartographer_ros_msgs::WorkerStatus>(
+          kWorkerStatusTopic, kLatestOnlyPublisherQueueSize);
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
   service_servers_.push_back(node_handle_.advertiseService(
@@ -137,6 +140,9 @@ Node::Node(
   wall_timers_.push_back(node_handle_.createWallTimer(
       ::ros::WallDuration(kConstraintPublishPeriodSec),
       &Node::PublishConstraintList, this));
+  wall_timers_.push_back(node_handle_.createWallTimer(
+      ::ros::WallDuration(node_options_.worker_status_publish_period_sec),
+      &Node::PublishWorkerStatus, this));
 }
 
 Node::~Node() { FinishAllTrajectories(); }
@@ -312,6 +318,14 @@ void Node::PublishConstraintList(
   if (constraint_list_publisher_.getNumSubscribers() > 0) {
     carto::common::MutexLocker lock(&mutex_);
     constraint_list_publisher_.publish(map_builder_bridge_.GetConstraintList());
+  }
+}
+
+void Node::PublishWorkerStatus(
+    const ::ros::WallTimerEvent& unused_timer_event) {
+  if (worker_status_publisher_.getNumSubscribers() > 0) {
+    carto::common::MutexLocker lock(&mutex_);
+    worker_status_publisher_.publish(map_builder_bridge_.GetWorkerStatus());
   }
 }
 

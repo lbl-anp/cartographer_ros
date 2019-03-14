@@ -35,6 +35,7 @@ add_message_files(
     SubmapTexture.msg
     SensorTopics.msg
     TrajectoryOptions.msg
+    WorkerStatus.msg
 )
 
 add_service_files(
