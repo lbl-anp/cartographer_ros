@@ -20,9 +20,14 @@
 #include "cartographer/io/color.h"
 #include "cartographer/io/proto_stream.h"
 #include "cartographer/mapping/pose_graph.h"
+#include "cartographer/mapping/proto/serialization.pb.h"
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
+#include "cartographer_ros/time_conversion.h"
+#include "sensor_msgs/point_cloud2_iterator.h"
+#include "Eigen/Eigen"
+#include "Eigen/Geometry"
 
 namespace cartographer_ros {
 namespace {
@@ -93,6 +98,56 @@ void PushAndResetLineMarker(visualization_msgs::Marker* marker,
   marker->points.clear();
 }
 
+sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
+  const cartographer::mapping::proto::HybridGrid& hybrid_grid,
+  double min_probability,
+  Eigen::Transform<float,3,Eigen::Affine> transform) {
+    ROS_DEBUG("Hybrid grid size %d", hybrid_grid.values_size());
+
+    double resolution = hybrid_grid.resolution();
+    sensor_msgs::PointCloud2 cloud;
+    cloud.height = 1; //"unstructured" point cloud
+    cloud.width = 0;
+    for (int i = 0; i < hybrid_grid.values_size(); i++) {
+        if(hybrid_grid.values(i) > 32767.0 * min_probability) cloud.width++;
+    }
+    cloud.is_dense = true;
+    cloud.is_bigendian = false;
+    sensor_msgs::PointCloud2Modifier modifier(cloud);
+    modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32,
+                                     "y", 1, sensor_msgs::PointField::FLOAT32,
+                                     "z", 1, sensor_msgs::PointField::FLOAT32,
+                                     "intensity", 1, sensor_msgs::PointField::FLOAT32);
+    sensor_msgs::PointCloud2Iterator<float> iter_x(cloud, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(cloud, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(cloud, "z");
+    sensor_msgs::PointCloud2Iterator<float> iter_intensity(cloud, "intensity");
+
+    for (int i = 0; i < hybrid_grid.values_size(); i++) {
+      int value = hybrid_grid.values(i);
+      if(value > 32767 * min_probability){
+        int x,y,z;
+        x = hybrid_grid.x_indices(i);
+        y = hybrid_grid.y_indices(i);
+        z = hybrid_grid.z_indices(i);
+        // Don't transform submap points
+        Eigen::Vector3f point = /* transform * */ Eigen::Vector3f(x * resolution + resolution / 2.0,
+                                                                  y * resolution + resolution / 2.0,
+                                                                  z * resolution + resolution / 2.0);
+        *iter_x = point.x();
+        *iter_y = point.y();
+        *iter_z = point.z();
+        int prob_int = hybrid_grid.values(i);
+        *iter_intensity = prob_int / 32767.0; //2^15
+        ++iter_x;
+        ++iter_y;
+        ++iter_z;
+        ++iter_intensity;
+      }
+    }
+  return cloud;
+}
+
 }  // namespace
 
 MapBuilderBridge::MapBuilderBridge(
@@ -161,6 +216,74 @@ bool MapBuilderBridge::SerializeState(const std::string& filename) {
   cartographer::io::ProtoStreamWriter writer(filename);
   map_builder_->SerializeState(&writer);
   return writer.Close();
+}
+
+void MapBuilderBridge::HandleSubmapCloudQuery(
+      cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+      cartographer_ros_msgs::SubmapCloudQuery::Response& response){
+  LOG(INFO) << "received request: trajectory_id=" << request.trajectory_id
+    << " submap_index=" << request.submap_index
+    << " high_resolution=" << (request.high_resolution ? "true" : "false");
+  // Mapping of all submap data
+  auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
+  // Get submap by trajectory_id and submap_index
+  cartographer::mapping::SubmapId submap_id{request.trajectory_id,
+                                            request.submap_index};
+  if(!submapDataMap.Contains(submap_id)) {
+    std::ostringstream errorstream;
+    errorstream << "Cannot find submap: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
+    const std::string error = errorstream.str();
+    LOG(WARNING) << error;
+    response.status.code = cartographer_ros_msgs::StatusCode::NOT_FOUND;
+    response.status.message = error;
+    LOG(WARNING) << "Built empty response!";
+    return;
+  }
+  const ::cartographer::mapping::PoseGraph::SubmapData& submapData
+        = submapDataMap.at(submap_id);
+  ::cartographer::mapping::proto::Submap protoSubmap;
+  ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
+
+  submapData.submap->ToProto(protoSubmapPtr, true);  // TODO@jccurtis do we want to include_probability_grid_data
+  const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
+  // Check if submap is finished.
+  // TODO@jccurtis remove verbose logging
+  if(request.require_finished) {
+    if(!submap3d.finished()) {
+      std::ostringstream errorstream;
+      errorstream << "Submap not finished and require_finished==true: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
+      const std::string error = errorstream.str();
+      LOG(WARNING) << error;
+      response.finished = false;
+      response.status.code = cartographer_ros_msgs::StatusCode::UNAVAILABLE;
+      response.status.message = error;
+      LOG(WARNING) << "Built empty response!";
+      return;
+    }
+  }
+  const auto& hybrid_grid = request.high_resolution ?
+                submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
+  // TODO@jccurtis make this transform a service option
+  Eigen::Transform<float,3,Eigen::Affine> transform =
+            Eigen::Translation3f(submapData.pose.translation().x(),
+                                 submapData.pose.translation().y(),
+                                 submapData.pose.translation().z())
+                                 * Eigen::Quaternion<float>(
+                        submapData.pose.rotation().w(), submapData.pose.rotation().x(),
+                        submapData.pose.rotation().y(), submapData.pose.rotation().z());
+  auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
+  cloud.header.frame_id = node_options_.map_frame;
+  cloud.header.stamp = ros::Time::now();
+
+  response.cloud = cloud;
+  response.status.message = "Success.";
+  response.status.code = cartographer_ros_msgs::StatusCode::OK;
+  response.submap_version = 0;  // TODO@jccurtis add submap_version field?
+  response.finished = submap3d.finished();
+  response.resolution = hybrid_grid.resolution();
+  LOG(INFO) << "done building response: trajectory_id=" << request.trajectory_id
+    << " submap_index=" << request.submap_index
+    << " high_resolution=" << (request.high_resolution ? "true" : "false");
 }
 
 void MapBuilderBridge::HandleSubmapQuery(
@@ -350,6 +473,24 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
   return trajectory_node_list;
 }
 
+nav_msgs::Path MapBuilderBridge::GetPath() {
+  nav_msgs::Path path;
+  path.header.stamp = ::ros::Time::now();
+  path.header.frame_id = node_options_.map_frame;
+  const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodes();
+  for (const int trajectory_id : node_poses.trajectory_ids()) {
+    for (const auto& node_id_data : node_poses.trajectory(trajectory_id)) {
+      ::geometry_msgs::PoseStamped node_pose_stamp;
+      node_pose_stamp.pose = ToGeometryMsgPose(node_id_data.data.global_pose);
+      node_pose_stamp.header.stamp = ToRos(node_id_data.data.time());
+      node_pose_stamp.header.frame_id = "cartographer_trajectory_" +
+          ::std::to_string(trajectory_id);
+      path.poses.push_back(node_pose_stamp);
+    }
+  }
+  return path;
+}
+
 visualization_msgs::MarkerArray MapBuilderBridge::GetLandmarkPosesList() {
   visualization_msgs::MarkerArray landmark_poses_list;
   const std::map<std::string, Rigid3d> landmark_poses =
@@ -485,6 +626,15 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
   constraint_list.markers.push_back(constraint_inter_diff_trajectory_marker);
   constraint_list.markers.push_back(residual_inter_diff_trajectory_marker);
   return constraint_list;
+}
+
+cartographer_ros_msgs::WorkerStatus MapBuilderBridge::GetWorkerStatus() {
+  cartographer_ros_msgs::WorkerStatus worker_status;
+  worker_status.header.stamp = ::ros::Time::now();
+  worker_status.header.frame_id = node_options_.map_frame;
+  worker_status.num_remaining_items =
+    map_builder_->pose_graph()->GetWorkQueueSize();
+  return worker_status;
 }
 
 SensorBridge* MapBuilderBridge::sensor_bridge(const int trajectory_id) {

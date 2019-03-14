@@ -40,6 +40,8 @@ NodeOptions CreateNodeOptions(
       lua_parameter_dictionary->GetDouble("pose_publish_period_sec");
   options.trajectory_publish_period_sec =
       lua_parameter_dictionary->GetDouble("trajectory_publish_period_sec");
+  options.worker_status_publish_period_sec =
+      lua_parameter_dictionary->GetDouble("worker_status_publish_period_sec");
   return options;
 }
 
