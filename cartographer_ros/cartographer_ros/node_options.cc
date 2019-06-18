@@ -42,15 +42,19 @@ NodeOptions CreateNodeOptions(
       lua_parameter_dictionary->GetDouble("trajectory_publish_period_sec");
   options.worker_status_publish_period_sec =
       lua_parameter_dictionary->GetDouble("worker_status_publish_period_sec");
+  if (lua_parameter_dictionary->HasKey("use_pose_extrapolator")) {
+    options.use_pose_extrapolator =
+        lua_parameter_dictionary->GetBool("use_pose_extrapolator");
+  }
   return options;
 }
 
 std::tuple<NodeOptions, TrajectoryOptions> LoadOptions(
     const std::string& configuration_directory,
     const std::string& configuration_basename) {
-  auto file_resolver = cartographer::common::make_unique<
-      cartographer::common::ConfigurationFileResolver>(
-      std::vector<std::string>{configuration_directory});
+  auto file_resolver =
+      absl::make_unique<cartographer::common::ConfigurationFileResolver>(
+          std::vector<std::string>{configuration_directory});
   const std::string code =
       file_resolver->GetFileContentOrDie(configuration_basename);
   cartographer::common::LuaParameterDictionary lua_parameter_dictionary(

@@ -22,8 +22,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "cartographer/common/mutex.h"
+#include "absl/synchronization/mutex.h"
 #include "cartographer/mapping/map_builder_interface.h"
+#include "cartographer/mapping/pose_graph_interface.h"
 #include "cartographer/mapping/proto/trajectory_builder_options.pb.h"
 #include "cartographer/mapping/trajectory_builder_interface.h"
 #include "cartographer_ros/node_options.h"
@@ -35,7 +36,17 @@
 #include "cartographer_ros_msgs/WorkerStatus.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
 #include "cartographer_ros_msgs/SubmapCloudQuery.h"
+#include "cartographer_ros_msgs/TrajectoryQuery.h"
+#include "geometry_msgs/TransformStamped.h"
+#include "cartographer_ros_msgs/TrajectoryQuery.h"
+#include "geometry_msgs/TransformStamped.h"
 #include "nav_msgs/OccupancyGrid.h"
+
+// Abseil unfortunately pulls in winnt.h, which #defines DELETE.
+// Clean up to unbreak visualization_msgs::Marker::DELETE.
+#ifdef DELETE
+#undef DELETE
+#endif
 #include "visualization_msgs/MarkerArray.h"
 #include "nav_msgs/Path.h"
 #include "sensor_msgs/PointCloud2.h"
@@ -46,8 +57,8 @@ namespace cartographer_ros {
 
 class MapBuilderBridge {
  public:
-  struct TrajectoryState {
-    // Contains the trajectory state data received from local SLAM, after
+  struct LocalTrajectoryData {
+    // Contains the trajectory data received from local SLAM, after
     // it had processed accumulated 'range_data_in_local' and estimated
     // current 'local_pose' at 'time'.
     struct LocalSlamData {
@@ -79,11 +90,15 @@ class MapBuilderBridge {
       const TrajectoryOptions& trajectory_options);
   void FinishTrajectory(int trajectory_id);
   void RunFinalOptimization();
-  bool SerializeState(const std::string& filename);
+  bool SerializeState(const std::string& filename,
+                      const bool include_unfinished_submaps);
 
   void HandleSubmapQuery(
       cartographer_ros_msgs::SubmapQuery::Request& request,
       cartographer_ros_msgs::SubmapQuery::Response& response);
+  void HandleTrajectoryQuery(
+      cartographer_ros_msgs::TrajectoryQuery::Request& request,
+      cartographer_ros_msgs::TrajectoryQuery::Response& response);
 
   void HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
@@ -91,8 +106,11 @@ class MapBuilderBridge {
 
   std::set<int> GetFrozenTrajectoryIds();
   cartographer_ros_msgs::SubmapList GetSubmapList();
-  std::unordered_map<int, TrajectoryState> GetTrajectoryStates()
-      EXCLUDES(mutex_);
+  std::map<int /* trajectory_id */,
+           ::cartographer::mapping::PoseGraphInterface::TrajectoryState>
+  GetTrajectoryStates();
+  std::unordered_map<int, LocalTrajectoryData> GetLocalTrajectoryData()
+      LOCKS_EXCLUDED(mutex_);
   visualization_msgs::MarkerArray GetTrajectoryNodeList();
   visualization_msgs::MarkerArray GetLandmarkPosesList();
   visualization_msgs::MarkerArray GetConstraintList();
@@ -104,18 +122,17 @@ class MapBuilderBridge {
   SensorBridge* sensor_bridge(int trajectory_id);
 
  private:
-  void OnLocalSlamResult(
-      const int trajectory_id, const ::cartographer::common::Time time,
-      const ::cartographer::transform::Rigid3d local_pose,
-      ::cartographer::sensor::RangeData range_data_in_local,
-      const std::unique_ptr<const ::cartographer::mapping::
-                                TrajectoryBuilderInterface::InsertionResult>
-          insertion_result) EXCLUDES(mutex_);
+  void OnLocalSlamResult(const int trajectory_id,
+                         const ::cartographer::common::Time time,
+                         const ::cartographer::transform::Rigid3d local_pose,
+                         ::cartographer::sensor::RangeData range_data_in_local)
+      LOCKS_EXCLUDED(mutex_);
 
-  cartographer::common::Mutex mutex_;
+  absl::Mutex mutex_;
   const NodeOptions node_options_;
-  std::unordered_map<int, std::shared_ptr<const TrajectoryState::LocalSlamData>>
-      trajectory_state_data_ GUARDED_BY(mutex_);
+  std::unordered_map<int,
+                     std::shared_ptr<const LocalTrajectoryData::LocalSlamData>>
+      local_slam_data_ GUARDED_BY(mutex_);
   std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder_;
   tf2_ros::Buffer* const tf_buffer_;
 
