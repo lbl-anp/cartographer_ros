@@ -181,7 +181,7 @@ bool Node::HandleSubmapQuery(
 bool Node::HandleSubmapCloudQuery(
     ::cartographer_ros_msgs::SubmapCloudQuery::Request& request,
     ::cartographer_ros_msgs::SubmapCloudQuery::Response& response) {
-  carto::common::MutexLocker lock(&mutex_);
+  absl::MutexLock lock(&mutex_);
   map_builder_bridge_.HandleSubmapCloudQuery(request, response);
   return true;
 }
@@ -337,7 +337,7 @@ void Node::PublishTrajectoryNodeList(
 void Node::PublishPath(
     const ::ros::WallTimerEvent& unused_timer_event) {
   if (path_publisher_.getNumSubscribers() > 0) {
-    carto::common::MutexLocker lock(&mutex_);
+    absl::MutexLock lock(&mutex_);
     path_publisher_.publish(
         map_builder_bridge_.GetPath());
   }
@@ -367,7 +367,7 @@ void Node::PublishConstraintList(
 void Node::PublishWorkerStatus(
     const ::ros::WallTimerEvent& unused_timer_event) {
   if (worker_status_publisher_.getNumSubscribers() > 0) {
-    carto::common::MutexLocker lock(&mutex_);
+    absl::MutexLock lock(&mutex_);
     worker_status_publisher_.publish(map_builder_bridge_.GetWorkerStatus());
   }
 }
