@@ -249,7 +249,8 @@ void MapBuilderBridge::HandleSubmapCloudQuery(
   ::cartographer::mapping::proto::Submap protoSubmap;
   ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
 
-  submapData.submap->ToProto(protoSubmapPtr, true);  // TODO@jccurtis do we want to include_probability_grid_data
+  // NOTE@jccurtis removed boolean from v1.0.0 version to include_probability_grid_data
+  submapData.submap->ToProto(protoSubmapPtr);
   const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
   // Check if submap is finished.
   // TODO@jccurtis remove verbose logging
