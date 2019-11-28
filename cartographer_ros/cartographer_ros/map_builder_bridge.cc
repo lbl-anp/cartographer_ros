@@ -21,6 +21,7 @@
 #include "cartographer/io/color.h"
 #include "cartographer/io/proto_stream.h"
 #include "cartographer/mapping/pose_graph.h"
+#include "cartographer/mapping/probability_values.h"
 #include "cartographer/mapping/proto/serialization.pb.h"
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros/time_conversion.h"
@@ -104,14 +105,15 @@ sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
   const cartographer::mapping::proto::HybridGrid& hybrid_grid,
   double min_probability,
   Eigen::Transform<float,3,Eigen::Affine> transform) {
-    ROS_DEBUG("Hybrid grid size %d", hybrid_grid.values_size());
+    LOG(WARNING) << "[CreateCloudFromHybridGrid] Hybrid grid size: " << hybrid_grid.values_size();
 
     double resolution = hybrid_grid.resolution();
     sensor_msgs::PointCloud2 cloud;
     cloud.height = 1; //"unstructured" point cloud
     cloud.width = 0;
     for (int i = 0; i < hybrid_grid.values_size(); i++) {
-        if(hybrid_grid.values(i) > 32767.0 * min_probability) cloud.width++;
+        // Probability is stored in an int32 (proto doesn't have a uint16) in the [1, 32767] range.
+        if(cartographer::mapping::ValueToProbability(hybrid_grid.values(i)) > min_probability) cloud.width++;
     }
     cloud.is_dense = true;
     cloud.is_bigendian = false;
@@ -126,8 +128,8 @@ sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
     sensor_msgs::PointCloud2Iterator<float> iter_intensity(cloud, "intensity");
 
     for (int i = 0; i < hybrid_grid.values_size(); i++) {
-      int value = hybrid_grid.values(i);
-      if(value > 32767 * min_probability){
+      float probability = cartographer::mapping::ValueToProbability(hybrid_grid.values(i));
+      if(probability > min_probability){
         int x,y,z;
         x = hybrid_grid.x_indices(i);
         y = hybrid_grid.y_indices(i);
@@ -139,14 +141,14 @@ sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
         *iter_x = point.x();
         *iter_y = point.y();
         *iter_z = point.z();
-        int prob_int = hybrid_grid.values(i);
-        *iter_intensity = prob_int / 32767.0; //2^15
+        *iter_intensity = probability;
         ++iter_x;
         ++iter_y;
         ++iter_z;
         ++iter_intensity;
       }
     }
+    LOG(WARNING) << "[CreateCloudFromHybridGrid] Returning cloud";
   return cloud;
 }
 
@@ -226,44 +228,49 @@ bool MapBuilderBridge::SerializeState(const std::string& filename,
 void MapBuilderBridge::HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response){
-  LOG(INFO) << "received request: trajectory_id=" << request.trajectory_id
+  LOG(WARNING) << "[SubmapCloudQuery] received request: trajectory_id="
+    << request.trajectory_id
     << " submap_index=" << request.submap_index
     << " high_resolution=" << (request.high_resolution ? "true" : "false");
   // Mapping of all submap data
-  auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
-  // Get submap by trajectory_id and submap_index
+  auto all_submap_data = map_builder_->pose_graph()->GetAllSubmapData();
+  // Make submap reference
   cartographer::mapping::SubmapId submap_id{request.trajectory_id,
                                             request.submap_index};
-  if(!submapDataMap.Contains(submap_id)) {
+  if(!all_submap_data.Contains(submap_id)) {
     std::ostringstream errorstream;
-    errorstream << "Cannot find submap: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
+    errorstream << "[SubmapCloudQuery] cannot find submap: trajectory_id="
+      << request.trajectory_id << " submap_index=" << request.submap_index;
     const std::string error = errorstream.str();
     LOG(WARNING) << error;
     response.status.code = cartographer_ros_msgs::StatusCode::NOT_FOUND;
     response.status.message = error;
-    LOG(WARNING) << "Built empty response!";
+    LOG(WARNING) << "[SubmapCloudQuery] built empty response!";
     return;
   }
-  const ::cartographer::mapping::PoseGraph::SubmapData& submapData
-        = submapDataMap.at(submap_id);
-  ::cartographer::mapping::proto::Submap protoSubmap;
-  ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
+  const ::cartographer::mapping::PoseGraph::SubmapData& submap_data
+        = all_submap_data.at(submap_id);
 
-  // NOTE@jccurtis removed boolean from v1.0.0 version to include_probability_grid_data
-  submapData.submap->ToProto(protoSubmapPtr);
-  const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
+  // Get submap as proto to access inner data
+  // Include_probability_grid_data
+  ::cartographer::mapping::proto::Submap proto_submap
+    = submap_data.submap->ToProto(true);
+  // Get inner data structure
+  const cartographer::mapping::proto::Submap3D& submap3d
+    = proto_submap.submap_3d();
   // Check if submap is finished.
   // TODO@jccurtis remove verbose logging
   if(request.require_finished) {
     if(!submap3d.finished()) {
       std::ostringstream errorstream;
-      errorstream << "Submap not finished and require_finished==true: trajectory_id=" << request.trajectory_id << " submap_index=" << request.submap_index;
+      errorstream << "[SubmapCloudQuery] submap not finished and require_finished==true: trajectory_id="
+        << request.trajectory_id << " submap_index=" << request.submap_index;
       const std::string error = errorstream.str();
       LOG(WARNING) << error;
       response.finished = false;
       response.status.code = cartographer_ros_msgs::StatusCode::UNAVAILABLE;
       response.status.message = error;
-      LOG(WARNING) << "Built empty response!";
+      LOG(WARNING) << "[SubmapCloudQuery] Built empty response!";
       return;
     }
   }
@@ -271,12 +278,12 @@ void MapBuilderBridge::HandleSubmapCloudQuery(
                 submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
   // TODO@jccurtis make this transform a service option
   Eigen::Transform<float,3,Eigen::Affine> transform =
-            Eigen::Translation3f(submapData.pose.translation().x(),
-                                 submapData.pose.translation().y(),
-                                 submapData.pose.translation().z())
+            Eigen::Translation3f(submap_data.pose.translation().x(),
+                                 submap_data.pose.translation().y(),
+                                 submap_data.pose.translation().z())
                                  * Eigen::Quaternion<float>(
-                        submapData.pose.rotation().w(), submapData.pose.rotation().x(),
-                        submapData.pose.rotation().y(), submapData.pose.rotation().z());
+                        submap_data.pose.rotation().w(), submap_data.pose.rotation().x(),
+                        submap_data.pose.rotation().y(), submap_data.pose.rotation().z());
   auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
   cloud.header.frame_id = node_options_.map_frame;
   cloud.header.stamp = ros::Time::now();
@@ -287,7 +294,7 @@ void MapBuilderBridge::HandleSubmapCloudQuery(
   response.submap_version = 0;  // TODO@jccurtis add submap_version field?
   response.finished = submap3d.finished();
   response.resolution = hybrid_grid.resolution();
-  LOG(INFO) << "done building response: trajectory_id=" << request.trajectory_id
+  LOG(WARNING) << "done building response: trajectory_id=" << request.trajectory_id
     << " submap_index=" << request.submap_index
     << " high_resolution=" << (request.high_resolution ? "true" : "false");
 }
