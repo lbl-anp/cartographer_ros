@@ -51,6 +51,7 @@
   <depend>message_runtime</depend>
   <depend>nav_msgs</depend>
   <depend>pcl_conversions</depend>
+  <depend>pcl_ros</depend>
   <depend>robot_state_publisher</depend>
   <depend>rosbag</depend>
   <depend>roscpp</depend>

@@ -23,6 +23,7 @@ set(PACKAGE_DEPENDENCIES
   message_runtime
   nav_msgs
   pcl_conversions
+  pcl_ros
   rosbag
   roscpp
   roslib
