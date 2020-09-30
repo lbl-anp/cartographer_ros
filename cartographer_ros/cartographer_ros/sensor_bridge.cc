@@ -76,6 +76,14 @@ void SensorBridge::HandleNavSatFixMessage(
     const std::string& sensor_id, const sensor_msgs::NavSatFix::ConstPtr& msg) {
   const carto::common::Time time = FromRos(msg->header.stamp);
   if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
+    if (time <= previous_nav_sat_fix_time_) {
+      LOG(WARNING) << "Ignored NavSatFix message from sensor " << sensor_id
+                   << " because this data time (" << time
+                   << ") is not after the previous data time ("
+                   << previous_nav_sat_fix_time_ << ")";
+      return;
+    }
+    previous_nav_sat_fix_time_ = time;
     trajectory_builder_->AddSensorData(
         sensor_id,
         carto::sensor::FixedFramePoseData{time, absl::optional<Rigid3d>()});
@@ -240,6 +248,14 @@ void SensorBridge::HandleRangefinder(
   const auto sensor_to_tracking =
       tf_bridge_.LookupToTracking(time, CheckNoLeadingSlash(frame_id));
   if (sensor_to_tracking != nullptr) {
+    if (time <= previous_range_finder_time_) {
+      LOG(WARNING) << "Ignored range finder message from sensor " << sensor_id
+                   << " because this data time (" << time
+                   << ") is not after the previous data time ("
+                   << previous_range_finder_time_ << ")";
+      return;
+    }
+    previous_range_finder_time_ = time;
     trajectory_builder_->AddSensorData(
         sensor_id, carto::sensor::TimedPointCloudData{
                        time, sensor_to_tracking->translation().cast<float>(),

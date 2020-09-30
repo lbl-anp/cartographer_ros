@@ -84,7 +84,9 @@ class SensorBridge {
                          const std::string& frame_id,
                          const ::cartographer::sensor::TimedPointCloud& ranges);
 
+  cartographer::common::Time previous_nav_sat_fix_time_;
   cartographer::common::Time previous_imu_time_;
+  cartographer::common::Time previous_range_finder_time_;
   const int num_subdivisions_per_laser_scan_;
   std::map<std::string, cartographer::common::Time>
       sensor_to_previous_subdivision_time_;
