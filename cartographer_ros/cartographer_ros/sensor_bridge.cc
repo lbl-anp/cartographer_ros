@@ -146,6 +146,14 @@ void SensorBridge::HandleImuMessage(const std::string& sensor_id,
                                     const sensor_msgs::Imu::ConstPtr& msg) {
   std::unique_ptr<carto::sensor::ImuData> imu_data = ToImuData(msg);
   if (imu_data != nullptr) {
+    if (imu_data->time <= previous_imu_time_) {
+      LOG(WARNING) << "Ignored imu message from sensor " << sensor_id 
+                   << " because this imu data time (" << imu_data->time 
+                   << ") is not after the previous imu data time ("
+                   << previous_imu_time_ << ")";
+      return;
+    }
+    previous_imu_time_ = imu_data->time; 
     trajectory_builder_->AddSensorData(
         sensor_id,
         carto::sensor::ImuData{imu_data->time, imu_data->linear_acceleration,
