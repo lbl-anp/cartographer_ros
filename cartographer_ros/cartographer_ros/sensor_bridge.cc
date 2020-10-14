@@ -249,10 +249,12 @@ void SensorBridge::HandleRangefinder(
       tf_bridge_.LookupToTracking(time, CheckNoLeadingSlash(frame_id));
   if (sensor_to_tracking != nullptr) {
     if (time <= previous_range_finder_time_) {
-      LOG(WARNING) << "Ignored range finder message from sensor " << sensor_id
-                   << " because this data time (" << time
-                   << ") is not after the previous data time ("
-                   << previous_range_finder_time_ << ")";
+      LOG_EVERY_N(WARNING, 1000)
+        << "Ignored range finder message from sensor (" << sensor_id
+        << ") because this data time (" << time
+        << ") is not after the previous data time ("
+        << previous_range_finder_time_ << ")."
+        << "(" << google::COUNTER << " total occurrences)";
       return;
     }
     previous_range_finder_time_ = time;
